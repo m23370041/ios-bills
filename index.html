@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>記帳小工具｜管理費・水・電・瓦斯</title>
+  
+  <!-- iOS 加到主畫面（全螢幕） -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  
+  <!-- Tailwind（CDN 版，單檔好上手） -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .safe-top{ padding-top: max(1rem, env(safe-area-inset-top)); }
+    .safe-bottom{ padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    @media (prefers-color-scheme: dark){ html{ color-scheme: dark; } body{ background:#0b0b0b; color:#e5e7eb; } }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button{ -webkit-appearance: none; margin:0; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100">
+  <header class="safe-top sticky top-0 z-50 bg-white/80 dark:bg-black/60 backdrop-blur border-b border-gray-200/70 dark:border-gray-800">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">記帳小工具｜管理費・水・電・瓦斯</h1>
+      <button id="installHintBtn" class="text-xs px-2 py-1 rounded bg-gray-900 text-white dark:bg-white dark:text-black">加入主畫面</button>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 space-y-4">
+    <!-- 安裝提示 -->
+    <div id="installHint" class="hidden border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-800 rounded-xl p-4">
+      <p class="text-sm leading-relaxed">
+        在 iPhone 的 <strong>Safari</strong> 打開本頁，點右下角<strong>分享</strong>（方框上箭頭）→ 向下捲 → <strong>加入主畫面</strong>。
+        加入後，從主畫面開啟會是全螢幕 App 體驗。
+      </p>
+    </div>
+
+    <!-- 新增表單 -->
+    <section class="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4">
+      <h2 class="font-medium mb-3">新增一筆</h2>
+      <form id="entryForm" class="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div class="col-span-2 md:col-span-2">
+          <label class="text-xs text-gray-500">日期</label>
+          <input id="date" type="date" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700" required>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">項目</label>
+          <select id="category" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700" required>
+            <option>管理費</option>
+            <option>水費</option>
+            <option>電費</option>
+            <option>瓦斯費</option>
+            <option>其他</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">金額</label>
+          <input id="amount" type="number" inputmode="decimal" min="0" step="1" placeholder="0" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700" required>
+        </div>
+        <div class="col-span-2 md:col-span-2">
+          <label class="text-xs text-gray-500">備註（選填）</label>
+          <input id="note" type="text" placeholder="例：A棟 8月管理費" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
+        </div>
+        <div class="col-span-2 md:col-span-6 flex flex-wrap gap-2">
+          <button class="px-4 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black" type="submit">新增</button>
+          <button id="exportCsv" class="px-4 py-2 rounded-xl bg-emerald-600 text-white" type="button">匯出 CSV</button>
+          <input id="csvFile" type="file" accept=".csv" class="hidden" />
+          <button id="importCsv" class="px-4 py-2 rounded-xl bg-amber-500 text-white" type="button">匯入 CSV</button>
+          <button id="clearAll" class="px-4 py-2 rounded-xl bg-gray-200 dark:bg-zinc-800" type="button">清空所有</button>
+          <span id="syncBadge" class="text-xs px-2 py-1 rounded hidden"></span>
+        </div>
+      </form>
+    </section>
+
+    <!-- 篩選與小計 -->
+    <section class="bg-white dark:bg-zinc-900 rounded-2xl shadow p-4 space-y-3">
+      <div class="flex flex-col md:flex-row gap-3 md:items-end">
+        <div>
+          <label class="text-xs text-gray-500">起始日</label>
+          <input id="fromDate" type="date" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">結束日</label>
+          <input id="toDate" type="date" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
+        </div>
+        <div class="flex gap-2">
+          <button id="applyFilter" class="px-4 py-2 rounded-xl bg-blue-600 text-white" type="button">套用篩選</button>
+          <button id="resetFilter" class="px-4 py-2 rounded-xl bg-gray-200 dark:bg-zinc-800" type="button">重設</button>
+        </div>
+      </div>
+
+      <div id="summary" class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm"></div>
+    </section>
+
+    <!-- 資料表 -->
+    <section class="bg-white dark:bg-zinc-900 rounded-2xl shadow p-2">
+      <div class="flex items-center justify-between px-2 py-2">
+        <h2 class="font-medium">紀錄</h2>
+        <span id="count" class="text-xs text-gray-500"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-100 dark:bg-zinc-800">
+            <tr>
+              <th class="p-2 text-left">日期</th>
+              <th class="p-2 text-left">項目</th>
+              <th class="p-2 text-left">金額</th>
+              <th class="p-2 text-left">備註</th>
+              <th class="p-2 text-left">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="safe-bottom max-w-3xl mx-auto px-4 py-6 text-center text-xs text-gray-500">
+    <p>本地儲存（LocalStorage）｜更換裝置或清除網站資料會清空本地資料。若已開啟 Google Sheets 同步，試算表即為你的雲端備份。</p>
+  </footer>
+
+<script>
+// =====================
+//   🔧 設定（請修改）
+// =====================
+// 1) 依照我給你的 Apps Script 教學建立 Web App，將部署網址貼到下方：
+const GOOGLE_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwEqVsGmmTMSUTG65_EPKWPpFehMYhvvz23QiQqZNCOZenvhUr0YDZtiMouqMSBmIjI/exec';
+// 2) 與 Apps Script 端一致的密鑰：
+const SHARED_SECRET = '04241208';
+// 3) 若暫時不想同步，設為 false：
+const SYNC_ENABLED = true;
+
+// =====================
+//   基礎工具
+// =====================
+const KEY = 'bills_entries_v2';
+const CATS = ['管理費','水費','電費','瓦斯費','其他'];
+
+function todayStr(){ const d = new Date(); return d.toISOString().slice(0,10); }
+function uid(){ return (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)) }
+function load(){ try { return JSON.parse(localStorage.getItem(KEY)) || [] } catch { return [] } }
+function save(list){ localStorage.setItem(KEY, JSON.stringify(list)) }
+function between(dateStr, from, to){ if (from && dateStr < from) return false; if (to && dateStr > to) return false; return true }
+
+function setSyncBadge(status, msg){
+  const el = document.getElementById('syncBadge');
+  el.classList.remove('hidden');
+  el.textContent = msg || '';
+  el.className = 'text-xs px-2 py-1 rounded ' + (
+    status==='ok' ? 'bg-emerald-600 text-white' :
+    status==='fail' ? 'bg-red-600 text-white' :
+    'bg-gray-300 text-gray-800'
+  );
+}
+
+// =====================
+//   Sheets 同步
+// =====================
+async function syncToSheet(rows){
+  if (!SYNC_ENABLED) return { ok:true, disabled:true };
+  if (!GOOGLE_WEBAPP_URL || GOOGLE_WEBAPP_URL.startsWith('PASTE_')){
+    setSyncBadge('fail','未設定 Sheets 同步');
+    return { ok:false, error:'missing_webapp_url' };
+  }
+  try{
+    setSyncBadge('','同步中…');
+    const res = await fetch(GOOGLE_WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SHARED_SECRET, rows })
+    });
+    const j = await res.json();
+    if(!j.ok) throw new Error(j.error || 'sync_failed');
+    setSyncBadge('ok',`已同步 ${j.inserted ?? rows.length} 筆`);
+    setTimeout(()=>document.getElementById('syncBadge').classList.add('hidden'), 2000);
+    return j;
+  }catch(err){
+    console.error('[Sheet Sync]', err);
+    setSyncBadge('fail','同步失敗（仍已存本機）');
+    return { ok:false, error: String(err) };
+  }
+}
+
+// =====================
+//   渲染
+// =====================
+function renderTable(list, from=null, to=null){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  let data = [...list].sort((a,b)=> a.date < b.date ? 1 : -1);
+  if(from || to) data = data.filter(e => between(e.date, from, to));
+  for(const e of data){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="p-2 whitespace-nowrap">${e.date}</td>
+      <td class="p-2">${e.category}</td>
+      <td class="p-2 text-right">${Number(e.amount).toLocaleString('zh-Hant-TW')}</td>
+      <td class="p-2">${e.note || ''}</td>
+      <td class="p-2"><button class="px-2 py-1 rounded bg-red-600 text-white" data-id="${e.id}">刪除</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('count').textContent = `共 ${data.length} 筆`;
+  tbody.querySelectorAll('button[data-id]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if(!confirm('確定刪除此筆？')) return;
+      const all = load().filter(x => x.id !== btn.dataset.id);
+      save(all); refresh();
+    })
+  })
+}
+
+function renderSummary(list, from=null, to=null){
+  const box = document.getElementById('summary');
+  const sum = { '管理費':0, '水費':0, '電費':0, '瓦斯費':0, '其他':0, total:0 };
+  for(const e of list){ if(!between(e.date,from,to)) continue; const n = Number(e.amount)||0; sum[e.category] = (sum[e.category]||0)+n; sum.total += n; }
+  box.innerHTML = '';
+  const fmt = n => n.toLocaleString('zh-Hant-TW');
+  [...CATS, '合計'].forEach(cat=>{
+    const key = (cat==='合計')? 'total' : cat;
+    const div = document.createElement('div');
+    div.className = 'rounded-xl border border-gray-200 dark:border-zinc-700 px-3 py-2';
+    div.innerHTML = `<div class="text-xs text-gray-500">${cat}</div><div class="text-lg font-semibold">$ ${fmt(sum[key]||0)}</div>`;
+    box.appendChild(div);
+  })
+}
+
+function refresh(){
+  const all = load();
+  const from = document.getElementById('fromDate').value || null;
+  const to = document.getElementById('toDate').value || null;
+  renderTable(all, from, to);
+  renderSummary(all, from, to);
+}
+
+// =====================
+//   事件綁定
+// =====================
+document.getElementById('date').value = todayStr();
+
+document.getElementById('entryForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const date = document.getElementById('date').value;
+  const category = document.getElementById('category').value;
+  const amount = document.getElementById('amount').value.trim();
+  const note = document.getElementById('note').value.trim();
+
+  if(!date) return alert('請選擇日期');
+  const num = Number(amount);
+  if(!amount || isNaN(num) || num < 0) return alert('金額需為數字');
+
+  const entry = { id: uid(), date, category, amount: num, note, created_at: new Date().toISOString() };
+  const all = load(); all.push(entry); save(all);
+  await syncToSheet([{ ...entry, source:'ios-web' }]);
+  document.getElementById('amount').value = '';
+  document.getElementById('note').value = '';
+  refresh();
+});
+
+document.getElementById('applyFilter').addEventListener('click', refresh);
+
+document.getElementById('resetFilter').addEventListener('click', ()=>{
+  document.getElementById('fromDate').value = '';
+  document.getElementById('toDate').value = '';
+  refresh();
+});
+
+document.getElementById('clearAll').addEventListener('click', ()=>{
+  if(confirm('清空所有紀錄？此動作無法復原')){ localStorage.removeItem(KEY); refresh(); }
+});
+
+document.getElementById('exportCsv').addEventListener('click', ()=>{
+  const from = document.getElementById('fromDate').value || null;
+  const to = document.getElementById('toDate').value || null;
+  const data = load().filter(e => between(e.date, from, to));
+  const headers = ['date','category','amount','note','created_at'];
+  const rows = [headers.join(',')].concat(
+    data.map(e => headers.map(h => {
+      const v = (e[h] ?? '').toString().replaceAll('"','""');
+      return '"'+v+'"';
+    }).join(','))
+  );
+  const blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'bills.csv'; a.click(); URL.revokeObjectURL(url);
+});
+
+// ====== CSV 匯入（含同步） ======
+const csvInput = document.getElementById('csvFile');
+document.getElementById('importCsv').addEventListener('click',()=> csvInput.click());
+
+function parseCSV(text){
+  const rows = [];
+  const lines = text.replace(/\r/g,'').split('\n').filter(Boolean);
+  if(!lines.length) return rows;
+  const split = (line)=>{
+    const out=[]; let cur=''; let q=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){
+        if(q && line[i+1]==='"'){ cur+='"'; i++; } else { q=!q; }
+      } else if(c===',' && !q){ out.push(cur); cur=''; }
+      else { cur+=c; }
+    }
+    out.push(cur); return out;
+  };
+  const header = split(lines[0]).map(h=>h.trim().toLowerCase());
+  const idx = {
+    date: header.indexOf('date')>-1? header.indexOf('date') : header.indexOf('日期'),
+    category: header.indexOf('category')>-1? header.indexOf('category') : header.indexOf('項目'),
+    amount: header.indexOf('amount')>-1? header.indexOf('amount') : header.indexOf('金額'),
+    note: header.indexOf('note')>-1? header.indexOf('note') : header.indexOf('備註')
+  };
+  for(let i=1;i<lines.length;i++){
+    const cols = split(lines[i]);
+    const date = (cols[idx.date]||'').trim();
+    const category = (cols[idx.category]||'').trim() || '其他';
+    const amount = Number((cols[idx.amount]||'0').replace(/,/g,''));
+    const note = (cols[idx.note]||'').trim();
+    if(!date || isNaN(amount)) continue;
+    rows.push({ id: uid(), date, category, amount, note, created_at: new Date().toISOString() });
+  }
+  return rows;
+}
+
+csvInput.addEventListener('change', async (e)=>{
+  const file = e.target.files?.[0]; if(!file) return;
+  const text = await file.text();
+  const rows = parseCSV(text);
+  if(!rows.length) return alert('沒有可匯入的資料');
+  const all = load(); all.push(...rows); save(all);
+  // 批次同步，避免請求過大
+  const size = 200;
+  for(let i=0;i<rows.length;i+=size){
+    const batch = rows.slice(i,i+size).map(r=> ({...r, source:'import'}));
+    await syncToSheet(batch);
+  }
+  alert(`已匯入 ${rows.length} 筆`);
+  refresh();
+});
+
+// ====== iOS 安裝提示 ======
+function shouldShowInstallHint(){
+  const ua = navigator.userAgent.toLowerCase();
+  const isIOS = /iphone|ipad|ipod/.test(ua);
+  const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  return isIOS && !isStandalone;
+}
+const installHint = document.getElementById('installHint');
+const installHintBtn = document.getElementById('installHintBtn');
+if(shouldShowInstallHint()) installHint.classList.remove('hidden');
+installHintBtn.addEventListener('click', ()=> installHint.classList.toggle('hidden'));
+
+// 首次渲染
+refresh();
+</script>
+</body>
+</html>
