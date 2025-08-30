@@ -63,7 +63,7 @@
           <input id="note" type="text" placeholder="例：A棟 8月管理費" class="w-full border rounded-lg px-3 py-2 bg-white/50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
         </div>
         <div class="col-span-2 md:col-span-6 flex flex-wrap gap-2">
-          <button class="px-4 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black" type="submit">新增</button>
+          <button class="px-4 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black" type="submit">儲存（寫入 Google Sheet）</button>
           <button id="exportCsv" class="px-4 py-2 rounded-xl bg-emerald-600 text-white" type="button">匯出 CSV</button>
           <input id="csvFile" type="file" accept=".csv" class="hidden" />
           <button id="importCsv" class="px-4 py-2 rounded-xl bg-amber-500 text-white" type="button">匯入 CSV</button>
@@ -241,6 +241,30 @@ document.getElementById('date').value = todayStr();
 
 document.getElementById('entryForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
+  const date = document.getElementById('date').value;
+  const category = document.getElementById('category').value;
+  const amount = document.getElementById('amount').value.trim();
+  const note = document.getElementById('note').value.trim();
+
+  if(!date) return alert('請選擇日期');
+  const num = Number(amount);
+  if(!amount || isNaN(num) || num < 0) return alert('金額需為數字');
+
+  const entry = { id: uid(), date, category, amount: num, note, created_at: new Date().toISOString() };
+
+  // 先寫入 Google Sheet；若失敗則不寫入本機
+  const cloud = await syncToSheet([{ ...entry, source:'ios-web' }]);
+  if(!cloud.ok){
+    alert('寫入 Google Sheet 失敗，請稍後再試（已取消本機儲存）');
+    return;
+  }
+
+  // 雲端成功後，再寫入本機作為備份
+  const all = load(); all.push(entry); save(all);
+  document.getElementById('amount').value = '';
+  document.getElementById('note').value = '';
+  refresh();
+});
   const date = document.getElementById('date').value;
   const category = document.getElementById('category').value;
   const amount = document.getElementById('amount').value.trim();
